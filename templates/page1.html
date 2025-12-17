@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand Gesture Recognition - HandSignAI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles1.css') }}">
+</head>
+<body>
+    <nav>
+        <a href="{{ url_for('index') }}">Home</a>
+        <a href="/page1">Hand Recognition</a>
+    </nav>
+    
+    <header>
+        <h1><i>Hand Gesture Recognition</i></h1>
+    </header>
+
+    <main>
+        <div class="camera-section">
+            <div class="video-container">
+                <video id="video" autoplay></video>
+                <canvas id="canvas" style="display:none;"></canvas>
+            </div>
+            <div class="video-container">
+                <img id="preview" style="display:none;">
+            </div>
+            <div class="controls">
+                <button id="capture">Capture Image</button>
+                <button id="analyze">Analyze Hand Sign</button>
+                <input type="file" id="fileInput" accept="image/*">
+                <div id="result">Result: </div>
+            </div>
+        </div>
+    </main>
+    
+
+    <footer>
+        <p>&copy; 2025 HandSignAI. All Rights Reserved.</p>
+    </footer>
+
+    <!--
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    -->
+    <script>
+        const video = document.getElementById('video');
+        const startBtn = document.getElementById('startBtn');
+        const resultDiv = document.getElementById('result');
+        const cameraStatus = document.getElementById('cameraStatus');
+        let isDetecting = false;
+        let detectionCanvas = null;
+        let detectionCtx = null;
+
+        // Set up a single canvas for frame capture (avoids recreating it every frame)
+        function setupCanvas() {
+            detectionCanvas = document.createElement('canvas');
+            detectionCtx = detectionCanvas.getContext('2d');
+        }
+        setupCanvas();
+
+        // Access the webcam with error handling
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+            .then(stream => {
+                video.srcObject = stream;
+                video.play(); // Explicitly start playing
+                console.log('Camera stream set:', video.srcObject);
+                cameraStatus.textContent = "Camera access granted!";
+                cameraStatus.style.color = "green";
+            })
+            .catch(error => {
+                console.error('Camera Error:', error);
+                cameraStatus.textContent = `⚠️ Camera Error: ${error.message}`;
+            });
+
+        // Enable the button when the video is playing
+        video.addEventListener('playing', () => {
+            console.log('Video stream started');
+            startBtn.disabled = false;
+            console.log('Button enabled');
+        });
+
+        // Toggle detection on button click
+        startBtn.addEventListener('click', async () => {
+            if (!video.srcObject) {
+                alert("Camera not ready!");
+                return;
+            }
+
+            // Wait for video metadata if not already loaded
+            if (!video.videoWidth || !video.videoHeight) {
+                await new Promise(resolve => video.onloadedmetadata = resolve);
+            }
+
+            isDetecting = !isDetecting;
+            startBtn.textContent = isDetecting ? 'Stop' : 'Start';
+            console.log('Detection started:', isDetecting);
+            if (isDetecting) detectFrame();
+        });
+
+        // Capture a frame from the video and send it to the server for detection
+        async function detectFrame() {
+            if (!isDetecting) return;
+
+            // Set canvas dimensions to match the video frame
+            detectionCanvas.width = video.videoWidth;
+            detectionCanvas.height = video.videoHeight;
+            detectionCtx.drawImage(video, 0, 0, detectionCanvas.width, detectionCanvas.height);
+            console.log('Frame captured');
+
+            // Convert canvas image to JPEG base64 data URL
+            const imageData = detectionCanvas.toDataURL('image/jpeg', 0.8);
+            console.log('Image Data:', imageData.slice(0, 50) + '...'); // Log first 50 characters for debugging
+
+            // Send the captured frame to the server
+            try {
+                const response = await fetch('/detect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: imageData })
+                });
+
+                const data = await response.json();
+                if (data.error) {
+                    resultDiv.textContent = `Error: ${data.error}`;
+                } else {
+                    resultDiv.textContent = `Result: ${data.result}`;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.textContent = `Error: ${error.message}`;
+            }
+
+            // Continue the detection loop
+            requestAnimationFrame(detectFrame);
+        }
+    </script>
+</body>
+</html>
